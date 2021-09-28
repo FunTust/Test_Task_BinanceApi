@@ -1,173 +1,91 @@
 ﻿using System;
 using System.Text;
+using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Collections.Generic;
-using System.Text.Json.Serialization;
 using System.Security.Cryptography;
+using Newtonsoft.Json;
+using BinanceApi.Models;
+using BinanceApi.Env;
 
 
-namespace Test_Task
+namespace BinanceApi
 {
-    public class API_filter_Model
-    {
-        [JsonPropertyName("filterType")]
-        public string filterType;
-    }
-    public class API_BTCData_Model
-    {
-        [JsonPropertyName("quoteAsset")]
-        public string quoteAsset;
-    }
-    public class API_balance_model
-    {
-        [JsonPropertyName("asset")]
-        public string asset{ get; set; }
-        [JsonPropertyName("free")]
-        public float free{ get; set; }
-        [JsonPropertyName("locked")]
-        public float locked{ get; set; }
-    }
-    public class API_UserData_model
-    {
-        [JsonPropertyName("makerCommission")]
-        public int makerCommission{ get; set; }
-        [JsonPropertyName("takerCommission")]
-        public int takerCommission{ get; set; }
-        [JsonPropertyName("buyerCommission")]
-        public int buyerCommission{ get; set; }
-        [JsonPropertyName("sellerCommission")]
-        public int sellerCommission{ get; set; }
-        [JsonPropertyName("canTrade")]
-        public bool canTrade{ get; set; }
-        [JsonPropertyName("canWithdraw")]
-        public bool canWithdraw{ get; set; }
-        [JsonPropertyName("canDeposit")]
-        public bool canDeposit{ get; set; }
-        [JsonPropertyName("updateTime")]
-        public long updateTime{ get; set; }
-        [JsonPropertyName("accountType")]
-        public string accountType{ get; set; }
-        [JsonPropertyName("balances")]
-        public List<API_balance_model> balances{ get; set; }
-    }
-    public class API_Info_model
-    {
-        [JsonPropertyName("rateLimitType")]
-        public string RateLimitType { get; set; }
-        [JsonPropertyName("interval")]
-        public string Interval { get; set; }
-        [JsonPropertyName("limit")]
-        public int Limit { get; set; }
-    }
-
-    public class API_rateLimits
-    {  
-        [JsonPropertyName("rateLimits")]
-        public List<API_Info_model> RateLimits{ get; set; }
-    }
-
-    public class API_TickerPrice
-    {
-        [JsonPropertyName("symbol")]
-        public string symbol;
-        [JsonPropertyName("price")]
-        public string price;
-    }
-
-    
-
     class BinanceApi
     {
-        static string ApiKey { get; set; }
-        static string SecretKey { get; set; }
         static HttpClient ApiClient = new HttpClient();
-        static void Main()
+        public static void Main(string[] args)
         {
-            ApiClient.BaseAddress = new Uri("https://api.binance.com");
-
-            for(int i=1; i<4;i++){
-                ChoseKey(i);
-                Run();
-            }
-            int startin = DateTime.Now.Second;
-            Console.WriteLine("Press Enter to continue.");
-            Console.ReadLine();
-            var t = new System.Threading.Timer(o => ExchangeInfoPrint().GetAwaiter().GetResult(), null, 0, 60000);
+            StringBuilder path = new StringBuilder(Directory.GetCurrentDirectory());
+            path.Append(@"\appsettings.env");
+            DotEnv.Load(path.ToString());
+            ApiClient.BaseAddress = new Uri("https://api.binance.com/api/");
+            Thread Start = new Thread(o => Run().GetAwaiter());
+            Start.Start();
+            Timer t = new Timer(o => ExchangeInfoPrint().GetAwaiter(), null, 0, 60000);
             Console.ReadLine();
         }
 
-        static void Run()
+        static async Task Run()
         {
             APIBase();
-            UserDataPrint().GetAwaiter().GetResult();
+            await UserDataPrint();
         }
-        static void ChoseKey(int UserNum)
-        {
-            Console.WriteLine("User: " + UserNum);
-            if(UserNum == 1){
-                ApiKey = "ApiKey";
-                SecretKey = "SecretKey";
-            }
-            if(UserNum == 2){
-                ApiKey = "ApiKey";
-                SecretKey = "SecretKey";
-            }
-            if(UserNum == 3){
-                ApiKey = "ApiKey";
-                SecretKey = "SecretKey";
-            }
-        }
+
 
         static void ShowAPIInfo(API_rateLimits APIInfo)
         {
-            foreach (var d in APIInfo.RateLimits)
+            if (APIInfo is null)
                 {
-                    Console.WriteLine();
-                    Console.WriteLine("{0, -20}{1,-15}\t{2,-15}\t", d.RateLimitType, d.Interval, d.Limit);
+                    throw new ArgumentNullException(nameof(APIInfo));
                 }
+                else
+                {
+                    foreach (var d in APIInfo.RateLimits)
+                    {
+                        Console.WriteLine("{0, -20}{2} per {1,-15}", d.RateLimitType, d.Interval, d.Limit);
+                    }
+                }
+            
         }
 
         static void ShowtickerPrice(API_TickerPrice TickerPrice)
         {
-            Console.WriteLine("*****************");
-            Console.WriteLine("{0, -10}{1,-15}", TickerPrice.symbol, TickerPrice.price);
-            Console.WriteLine("*****************");
+            if (TickerPrice is null)
+                {
+                    throw new ArgumentNullException(nameof(TickerPrice));
+                }
+                else
+                {
+                    Console.WriteLine("*****************\n{0, -10}{1,-15}\n*****************", TickerPrice.symbol, TickerPrice.price);
+                }
         }
 
         static void ShowUserData(API_UserData_model APIUserData)
         {
-            foreach (var d in APIUserData.balances)
+            if (APIUserData is null)
                 {
-                    Console.WriteLine("{0, -10}{1,-15}\t{2,-15}\t", d.asset, d.free, d.locked);
+                    throw new ArgumentNullException(nameof(APIUserData));
                 }
-                Console.WriteLine(APIUserData.balances.Count);
+                else
+                {
+                    foreach (var d in APIUserData.balances)
+                    {
+                        if(d.free!=0){
+                            Console.WriteLine("{0, -10}{1,-15}\t{2,-15}\t", d.asset, d.free, d.locked);
+                        }
+                    }
+                }
         }
         static async Task ExchangeInfoPrint()
         {
-            Console.WriteLine("------------------");
             Console.WriteLine(DateTime.Now);
             try
             { 
-                API_rateLimits  rateLimits = await GetExchangeInfo();
-                if (rateLimits is null)
-                {
-                    throw new ArgumentNullException(nameof(rateLimits));
-                }
-                else
-                {
-                    ShowAPIInfo(rateLimits);
-                }
-                API_TickerPrice tickerPrice = await GetTickerPrice();
-                if (tickerPrice is null)
-                {
-                    throw new ArgumentNullException(nameof(tickerPrice));
-                }
-                else
-                {
-                    ShowtickerPrice(tickerPrice);
-                }
+                ShowAPIInfo(await GetExchangeInfo());
+                ShowtickerPrice(await GetTickerPrice());
             }
             catch (Exception e)
             {
@@ -177,19 +95,9 @@ namespace Test_Task
 
         static async Task UserDataPrint()
         {
-            Console.WriteLine("------------------");
-            Console.WriteLine(DateTime.Now);
             try
             { 
-                API_UserData_model  AccountInfo = await GetAccountInfo();
-                if (AccountInfo is null)
-                {
-                    throw new ArgumentNullException(nameof(AccountInfo));
-                }
-                else
-                {
-                    ShowUserData(AccountInfo);
-                }
+                ShowUserData(await GetAccountInfo());
                 APIBase();
             }
             catch (Exception e)
@@ -199,11 +107,16 @@ namespace Test_Task
         }
         static async Task<API_rateLimits> GetExchangeInfo()
         {
-            Uri  ExchangeInfoURL = new Uri(ApiClient.BaseAddress, "api/v3/exchangeInfo");
-            HttpResponseMessage response = await ApiClient.GetAsync(ExchangeInfoURL);
+            StringBuilder builder = new StringBuilder(ApiClient.BaseAddress.AbsoluteUri);
+            builder.Append("v3/exchangeInfo");
+            HttpResponseMessage response = await ApiClient.GetAsync(builder.ToString());
             if (response.IsSuccessStatusCode)
             {
-                return await response.Content.ReadAsAsync<API_rateLimits>();
+                var contentStream = await response.Content.ReadAsStreamAsync();
+                using var streamReader = new StreamReader(contentStream);
+                using var jsonReader = new JsonTextReader(streamReader);
+                JsonSerializer serializer = new JsonSerializer();
+                return serializer.Deserialize<API_rateLimits>(jsonReader);
             }
             else
             {
@@ -214,13 +127,16 @@ namespace Test_Task
 
         static async Task<API_TickerPrice> GetTickerPrice()
         {
-            string args = "?symbol=BTCUSDT";
-            Uri  ExchangeInfoURL = new Uri(ApiClient.BaseAddress, "api/v3/ticker/price");
-            HttpResponseMessage response = await ApiClient.GetAsync(ExchangeInfoURL+args);
+            StringBuilder builder = new StringBuilder(ApiClient.BaseAddress.AbsoluteUri);
+            builder.Append("v3/ticker/price?symbol=BTCUSDT");
+            HttpResponseMessage response = await ApiClient.GetAsync(builder.ToString());
             if (response.IsSuccessStatusCode)
             {
-                // return null;
-                return await response.Content.ReadAsAsync<API_TickerPrice>();
+                var contentStream = await response.Content.ReadAsStreamAsync();
+                using var streamReader = new StreamReader(contentStream);
+                using var jsonReader = new JsonTextReader(streamReader);
+                JsonSerializer serializer = new JsonSerializer();
+                return serializer.Deserialize<API_TickerPrice>(jsonReader);
             }
             else
             {
@@ -234,7 +150,7 @@ namespace Test_Task
             ApiClient.DefaultRequestHeaders.Clear();
             ApiClient.DefaultRequestHeaders.Accept.Clear();
             ApiClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            ApiClient.DefaultRequestHeaders.Add("X-MBX-APIKEY", ApiKey);
+            ApiClient.DefaultRequestHeaders.Add("X-MBX-APIKEY", Environment.GetEnvironmentVariable("API_KEY"));
         }
 
         static long GetTimestamp()
@@ -243,17 +159,24 @@ namespace Test_Task
             }
         static async Task<API_UserData_model> GetAccountInfo()
         {
-            long timeStamp = GetTimestamp();
-            Uri AccountInfo = new Uri(ApiClient.BaseAddress, "api/v3/account");
-            string args = null;
-            string headers = ApiClient.DefaultRequestHeaders.ToString();
-            string timestamp = GetTimestamp().ToString();
-            args += "&timestamp=" + timestamp;
-            var signature = CreateSignature(args);
-            HttpResponseMessage response = await ApiClient.GetAsync(AccountInfo+$"?{args}&signature={signature}");
+            StringBuilder url = new StringBuilder(ApiClient.BaseAddress.AbsoluteUri);
+            url.Append("v3/account");
+            StringBuilder args = new StringBuilder();
+            args.Append("&timestamp=");
+            args.Append(GetTimestamp());
+            var asignature = CreateSignature(args.ToString());
+            url.Append("?");
+            url.Append(args);
+            url.Append("&signature=");
+            url.Append(asignature);
+            HttpResponseMessage response = await ApiClient.GetAsync(url.ToString());
             if (response.IsSuccessStatusCode)
             {
-                return await response.Content.ReadAsAsync<API_UserData_model>();
+                var contentStream = await response.Content.ReadAsStreamAsync();
+                using var streamReader = new StreamReader(contentStream);
+                using var jsonReader = new JsonTextReader(streamReader);
+                JsonSerializer serializer = new JsonSerializer();
+                return serializer.Deserialize<API_UserData_model>(jsonReader);
             }
             else
             {
@@ -265,7 +188,7 @@ namespace Test_Task
         static string CreateSignature(string queryString)
         {
 
-            byte[] keyBytes = Encoding.UTF8.GetBytes(SecretKey);
+            byte[] keyBytes = Encoding.UTF8.GetBytes(Environment.GetEnvironmentVariable("SECRET_KEY"));
             byte[] queryStringBytes = Encoding.UTF8.GetBytes(queryString);
             HMACSHA256 hmacsha256 = new HMACSHA256(keyBytes);
 
